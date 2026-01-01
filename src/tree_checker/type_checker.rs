@@ -3,7 +3,10 @@ use std::{collections::HashMap, ops::Range, rc::Rc};
 use crate::{
     traits::TreeChecker,
     tree_checker::name_resolver::ResolvedAstTree,
-    types::resolved_types::{IdentifierId, ResolvedChunk, ResolvedExpression, ResolvedStatement},
+    types::{
+        Span,
+        resolved_types::{IdentifierId, ResolvedChunk, ResolvedExpression, ResolvedStatement},
+    },
 };
 
 pub struct TypeChecker {
@@ -51,6 +54,12 @@ impl TypeChecker {
             TypeError::ParamTypes(range) => {
                 println!(
                     "Err: Param types are dont match function declaration: {}",
+                    &input[range.clone()]
+                )
+            }
+            TypeError::BadReturnType(range) => {
+                println!(
+                    "Err: Return type doesn't match declared return type: {}",
                     &input[range.clone()]
                 )
             }
@@ -105,31 +114,44 @@ impl Scope {
 //
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeError {
-    DeclarationMatch(Range<usize>),
-    AssignmentMatch(Range<usize>),
-    NotDeclared(Range<usize>),
-    NotVoid(Range<usize>),
-    TypeMismatch(Range<usize>),
-    ParamTypes(Range<usize>),
+    DeclarationMatch(Span),
+    AssignmentMatch(Span),
+    NotDeclared(Span),
+    NotVoid(Span),
+    TypeMismatch(Span),
+    ParamTypes(Span),
+    BadReturnType(Span),
 }
 
 // TypeId
 //
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum TypeId {
-    Variable(IdentifierId),
+    Void,
+    Bool,
+    Usize,
     Fn {
-        params: Vec<IdentifierId>,
-        ret: Box<IdentifierId>,
+        params: Rc<[TypeId]>,
+        ret: Rc<TypeId>,
     },
 }
 impl PartialEq<TypeId> for &TypeId {
     fn eq(&self, other: &TypeId) -> bool {
-        self == other
+        self == &other
     }
 
     fn ne(&self, other: &TypeId) -> bool {
         !self.eq(other)
+    }
+}
+impl From<IdentifierId> for TypeId {
+    fn from(value: IdentifierId) -> Self {
+        match value.0 {
+            0 => TypeId::Void,
+            1 => TypeId::Bool,
+            2 => TypeId::Usize,
+            _ => panic!(),
+        }
     }
 }
 
@@ -139,6 +161,7 @@ impl TreeChecker<ResolvedAstTree> for TypeChecker {
     type CheckError = TypeError;
 
     fn check(&mut self, ast: &ResolvedAstTree) -> Result<(), Self::CheckError> {
+        // Add all the types in the file
         for chunk in &ast.body {
             match chunk {
                 ResolvedChunk::Constant => todo!(),
@@ -149,38 +172,54 @@ impl TreeChecker<ResolvedAstTree> for TypeChecker {
                     rtype,
                     ..
                 } => {
-                    let params = params.iter().map(|p| p.ptype.id).collect();
+                    let params = params.iter().map(|p| TypeId::from(p.ptype.id)).collect();
                     self.insert(
                         name.id,
                         TypeId::Fn {
                             params,
-                            ret: Box::new(rtype.id),
+                            ret: Rc::new(TypeId::from(rtype.id)),
                         },
-                    )
+                    );
                 }
                 ResolvedChunk::EOF => panic!(),
             }
         }
+        //Check all chunks
         for chunk in &ast.body {
             self.check_chunk(chunk)?;
         }
+        // Make sure theres been no funny buisness
         assert!(self.scope.parent.is_none());
         Ok(())
     }
 }
 
+// Checking methods for the building blocks of the code
+//
 impl TypeChecker {
     fn check_chunk(&mut self, chunk: &ResolvedChunk) -> Result<(), TypeError> {
         match chunk {
             ResolvedChunk::Constant => todo!(),
             ResolvedChunk::StaticVar => todo!(),
-            ResolvedChunk::Function { body, params, .. } => {
+            ResolvedChunk::Function {
+                body,
+                params,
+                rtype,
+                span,
+                ..
+            } => {
                 self.scope.push();
 
                 params
                     .iter()
-                    .for_each(|p| self.insert(p.name.id, TypeId::Variable(p.ptype.id)));
-                self.check_statement(body)?;
+                    .for_each(|p| self.insert(p.name.id, TypeId::from(p.ptype.id)));
+
+                let rtype = TypeId::from(rtype.id);
+                if let Some(v) = self.check_statement(body)? {
+                    if v != rtype {
+                        return Err(TypeError::BadReturnType(span.clone()));
+                    }
+                }
 
                 self.scope.pop().unwrap();
                 Ok(())
@@ -188,7 +227,10 @@ impl TypeChecker {
             ResolvedChunk::EOF => todo!(),
         }
     }
-    fn check_statement(&mut self, statement: &ResolvedStatement) -> Result<(), TypeError> {
+    fn check_statement(
+        &mut self,
+        statement: &ResolvedStatement,
+    ) -> Result<Option<&TypeId>, TypeError> {
         match statement {
             ResolvedStatement::Decleration {
                 name,
@@ -196,11 +238,11 @@ impl TypeChecker {
                 rtype,
                 span,
             } => {
-                if &TypeId::Variable(rtype.id) != self.check_expression(expression)? {
+                if &TypeId::from(rtype.id) != self.check_expression(expression)? {
                     return Err(TypeError::DeclarationMatch(span.clone()));
                 }
-                self.insert(name.id, TypeId::Variable(rtype.id));
-                Ok(())
+                self.insert(name.id, TypeId::from(rtype.id));
+                Ok(None)
             }
             ResolvedStatement::Reassignment {
                 name,
@@ -214,7 +256,7 @@ impl TypeChecker {
                 if dtype.unwrap() != self.check_expression(expression)? {
                     return Err(TypeError::AssignmentMatch(span.clone()));
                 }
-                Ok(())
+                Ok(None)
             }
             ResolvedStatement::If {
                 condition,
@@ -230,7 +272,7 @@ impl TypeChecker {
                     self.check_statement(st)?;
                 }
 
-                Ok(())
+                Ok(None)
             }
             ResolvedStatement::Scope { body, .. } => {
                 self.scope.push();
@@ -239,9 +281,10 @@ impl TypeChecker {
                 }
                 self.scope.pop().unwrap();
 
-                Ok(())
+                Ok(None)
             }
             ResolvedStatement::VoidCall { name, params, span } => {
+                //TODO: Check this
                 let tid;
                 match self.get(&name.id) {
                     Some(type_id) => tid = type_id,
@@ -249,16 +292,16 @@ impl TypeChecker {
                 }
 
                 let def_ret;
-                let def_params: Vec<_>;
+                let def_params;
                 match tid {
                     TypeId::Fn { params, ret } => {
                         def_ret = ret;
-                        def_params = params.iter().map(|p| self.get(p).unwrap()).collect();
+                        def_params = params;
                     }
                     _ => return Err(TypeError::TypeMismatch(span.clone())),
                 }
 
-                if **def_ret != IdentifierId(0) {
+                if **def_ret != TypeId::Void {
                     return Err(TypeError::NotVoid(span.clone()));
                 }
 
@@ -266,10 +309,17 @@ impl TypeChecker {
                 for p in params {
                     call_params.push(self.check_expression(p)?);
                 }
-                if def_params != call_params {
+                if *call_params != **def_params {
                     return Err(TypeError::ParamTypes(span.clone()));
                 }
-                todo!()
+                Ok(None)
+            }
+            ResolvedStatement::Return { expression, .. } => {
+                if let Some(expression) = expression {
+                    Ok(Some(self.check_expression(expression)?))
+                } else {
+                    Ok(Some(&TypeId::Void))
+                }
             }
         }
     }
@@ -288,6 +338,7 @@ impl TypeChecker {
                 presedence,
                 span,
             } => {
+                // TODO: Add proper type checking here
                 let left = self.check_expression(left)?;
                 let right = self.check_expression(right)?;
                 return Ok(left);

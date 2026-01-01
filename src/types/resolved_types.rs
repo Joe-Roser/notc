@@ -1,3 +1,4 @@
+use super::Span;
 use std::ops::Range;
 // Resolved Nodes
 //
@@ -6,12 +7,12 @@ pub struct IdentifierId(pub usize);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedIdentifier {
-    pub span: Range<usize>,
+    pub span: Span,
     pub id: IdentifierId,
 }
 #[derive(Debug, Clone)]
 pub struct ResolvedOperator {
-    pub span: Range<usize>,
+    pub span: Span,
     pub presedence: usize,
 }
 #[derive(Debug)]
@@ -29,7 +30,7 @@ pub enum ResolvedChunk {
         params: Vec<ResolvedParam>,
         rtype: ResolvedIdentifier,
         body: ResolvedStatement,
-        span: Range<usize>,
+        span: Span,
     },
     EOF,
 }
@@ -39,42 +40,46 @@ pub enum ResolvedStatement {
         name: ResolvedIdentifier,
         expression: Box<ResolvedExpression>,
         rtype: ResolvedIdentifier,
-        span: Range<usize>,
+        span: Span,
     },
     Reassignment {
         name: ResolvedIdentifier,
         expression: Box<ResolvedExpression>,
-        span: Range<usize>,
+        span: Span,
     },
     If {
         condition: Box<ResolvedExpression>,
         statement: Box<ResolvedStatement>,
         ielse: Option<Box<ResolvedStatement>>,
-        span: Range<usize>,
+        span: Span,
     },
     Scope {
         body: Vec<ResolvedStatement>,
-        span: Range<usize>,
+        span: Span,
     },
     VoidCall {
         name: ResolvedIdentifier,
         params: Vec<ResolvedExpression>,
-        span: Range<usize>,
+        span: Span,
+    },
+    Return {
+        expression: Option<Box<ResolvedExpression>>,
+        span: Span,
     },
 }
 #[derive(Debug, PartialEq, Eq)]
 pub enum ResolvedExpression {
     Identifier(ResolvedIdentifier),
     Literal {
-        span: Range<usize>,
+        span: Span,
     },
     UnaryOperator {
-        operation: Range<usize>,
+        operation: Span,
         expression: Box<ResolvedExpression>,
     },
     BinaryOperator {
         left: Box<ResolvedExpression>,
-        span: Range<usize>,
+        span: Span,
         presedence: usize,
         right: Box<ResolvedExpression>,
     },

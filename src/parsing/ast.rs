@@ -1,6 +1,6 @@
 use super::ParseError;
 
-use crate::types::spanned_types::{SpannedChunk, Token};
+use crate::types::{Token, spanned_types::SpannedChunk};
 
 pub use std::{ops::Range, rc::Rc};
 

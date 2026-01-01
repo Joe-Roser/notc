@@ -1,6 +1,6 @@
 use crate::{
     traits::{DebugLexerTrait, LexerTrait},
-    types::spanned_types::{SpannedIdentifier, Token},
+    types::{Token, spanned_types::SpannedIdentifier},
 };
 
 use crate::{SYMBOL_MATCHES, TEXT_MATCHES};
@@ -50,7 +50,7 @@ impl LexerTrait<Token> for Lexer {
             // Grab whole identifer
             while self.index < self.text.len() {
                 let c = self.peek_char().unwrap();
-                if !c.is_alphabetic() && c != '_' {
+                if !c.is_alphabetic() && c != '_' && !c.is_digit(10) {
                     break;
                 }
                 self.index += 1;

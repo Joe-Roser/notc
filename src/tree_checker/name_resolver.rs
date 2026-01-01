@@ -31,6 +31,10 @@ impl NameResolver {
         };
     }
 
+    pub fn dbg_ids(&self) {
+        _ = dbg!(&self.map);
+    }
+
     pub fn pre_intern(mut self, pre_intern: &[&str]) -> Self {
         for s in pre_intern {
             let id = IdentifierId(self.map.len());
@@ -158,6 +162,13 @@ impl NameResolver {
                     span,
                 }
             }
+            SpannedStatement::Return { expr, span } => ResolvedStatement::Return {
+                expression: match expr {
+                    None => None,
+                    Some(expr) => Some(Box::new(self.resolve_expression(*expr))),
+                },
+                span,
+            },
         }
     }
 

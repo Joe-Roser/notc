@@ -33,5 +33,5 @@ pub trait CodeGen<N>
 where
     N: AstNodeTrait,
 {
-    fn generate(self, ast: &N) -> ();
+    fn generate(self, ast: &N) -> Result<(), std::io::Error>;
 }

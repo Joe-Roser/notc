@@ -8,7 +8,7 @@ pub mod types;
 pub mod traits;
 
 //
-use types::spanned_types::{SpannedOperator, Token};
+use types::{Token, spanned_types::SpannedOperator};
 
 pub const TEXT_MATCHES: &[(&'static str, Token)] = &[
     ("let", Token::Let(0..0)),
@@ -17,6 +17,7 @@ pub const TEXT_MATCHES: &[(&'static str, Token)] = &[
     ("const", Token::Const(0..0)),
     ("static", Token::Static(0..0)),
     ("else", Token::Else(0..0)),
+    ("return", Token::Return(0..0)),
 ];
 pub const SYMBOL_MATCHES: &[(&'static str, Token)] = &[
     //Symbols

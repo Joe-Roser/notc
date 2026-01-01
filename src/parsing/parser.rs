@@ -3,8 +3,11 @@ use std::{fmt::Debug, ops::Range};
 
 use crate::{
     traits,
-    types::spanned_types::{
-        SpannedChunk, SpannedExpression, SpannedIdentifier, SpannedParam, SpannedStatement, Token,
+    types::{
+        Token,
+        spanned_types::{
+            SpannedChunk, SpannedExpression, SpannedIdentifier, SpannedParam, SpannedStatement,
+        },
     },
 };
 
@@ -341,70 +344,11 @@ impl SpannedAstTree {
                         });
                     }
                     // Reassignments
-                    Token::Operator(op) if self.resolve_span(op.span.clone()) == "=" => {
-                        let expression = self.parse_expression(lexer)?;
-                        let expression = Box::new(SpannedExpression::BinaryOperator {
-                            left: Box::new(SpannedExpression::Identifier(name.clone())),
-                            span: op.span.clone(),
-                            presedence: op.presedence,
-                            right: Box::new(expression),
-                        });
-                        st = Ok(SpannedStatement::Reassignment {
-                            name,
-                            expression,
-                            span: op.span,
-                        });
-                    }
-                    Token::Operator(op) if self.resolve_span(op.span.clone()) == "+=" => {
-                        let expression = self.parse_expression(lexer)?;
-                        let expression = Box::new(SpannedExpression::BinaryOperator {
-                            left: Box::new(SpannedExpression::Identifier(name.clone())),
-                            span: op.span.clone(),
-                            presedence: op.presedence,
-                            right: Box::new(expression),
-                        });
-                        st = Ok(SpannedStatement::Reassignment {
-                            name,
-                            expression,
-                            span: op.span,
-                        });
-                    }
-                    Token::Operator(op) if self.resolve_span(op.span.clone()) == "-=" => {
-                        let expression = self.parse_expression(lexer)?;
-                        let expression = Box::new(SpannedExpression::BinaryOperator {
-                            left: Box::new(SpannedExpression::Identifier(name.clone())),
-                            span: op.span.clone(),
-                            presedence: op.presedence,
-                            right: Box::new(expression),
-                        });
-                        st = Ok(SpannedStatement::Reassignment {
-                            name,
-                            expression,
-                            span: op.span,
-                        });
-                    }
-                    Token::Operator(op) if self.resolve_span(op.span.clone()) == "*=" => {
-                        let expression = self.parse_expression(lexer)?;
-                        let expression = Box::new(SpannedExpression::BinaryOperator {
-                            left: Box::new(SpannedExpression::Identifier(name.clone())),
-                            span: op.span.clone(),
-                            presedence: op.presedence,
-                            right: Box::new(expression),
-                        });
-                        st = Ok(SpannedStatement::Reassignment {
-                            name,
-                            expression,
-                            span: op.span,
-                        });
-                    }
-                    Token::Operator(op) if self.resolve_span(op.span.clone()) == "/=" => {
-                        let expression = self.parse_expression(lexer)?;
-                        let expression = Box::new(SpannedExpression::BinaryOperator {
-                            left: Box::new(SpannedExpression::Identifier(name.clone())),
-                            span: op.span.clone(),
-                            presedence: op.presedence,
-                            right: Box::new(expression),
-                        });
+                    Token::Operator(op)
+                        if ["=", "+=", "-=", "*=", "/="]
+                            .contains(&self.resolve_span(op.span.clone())) =>
+                    {
+                        let expression = Box::new(self.parse_expression(lexer)?);
                         st = Ok(SpannedStatement::Reassignment {
                             name,
                             expression,
@@ -426,6 +370,28 @@ impl SpannedAstTree {
                     }
                 }
                 // End of identifier branch
+            }
+            Token::Return(s1) => {
+                let expr;
+                match self.parse_expression(lexer) {
+                    Ok(e) => expr = Some(Box::new(e)),
+                    Err(ParseError::BadSyntax(t, _)) if matches!(t, Token::EOL(_)) => {
+                        return Ok(SpannedStatement::Return {
+                            expr: None,
+                            span: s1.start..t.get_span().end,
+                        });
+                    }
+                    Err(b) => return Err(b),
+                }
+                match lexer.next_token() {
+                    Token::EOL(s2) => {
+                        return Ok(SpannedStatement::Return {
+                            expr,
+                            span: s1.start..s2.end,
+                        });
+                    }
+                    b => return parse_error!(b, "Please end statements in ';'"),
+                }
             }
             // Miss
             b => {
@@ -478,6 +444,7 @@ impl SpannedAstTree {
                     );
                 }
             },
+            // TODO: Expression function calls
             Token::Identifier(identifier) => {
                 match lexer.peek_next() {
                     (Token::LParen(span), i) => {

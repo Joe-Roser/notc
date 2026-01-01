@@ -11,20 +11,15 @@ fn main() {
     let mut lexer = Lexer::from_rc_str(source_file.clone());
     let mut ast = SpannedAstTree::from_rc_str(source_file.clone());
 
-    let r = ast.parse_all(&mut lexer);
-    ast.debug_ast_result(&r);
-    r.unwrap();
+    let r = ast.parse_all(&mut lexer).expect("Parsing error");
 
-    let ast = NameResolver::from_rc_str(source_file.clone())
-        .pre_intern(notc::PRIMATIVE_TYPES)
-        .resolve(ast);
-    dbg!(&ast);
+    let mut nr = NameResolver::from_rc_str(source_file.clone()).pre_intern(notc::PRIMATIVE_TYPES);
+    let ast = dbg!(nr.resolve(ast));
 
-    let r = TypeChecker::new().check(&ast);
-    TypeChecker::debug_check_result(&r, source_file.clone());
-    r.unwrap();
+    TypeChecker::new().check(&ast).expect("Type error");
 
     let out = std::fs::File::create("input.c").unwrap();
-    let r = CCodeGen::new(source_file.clone(), out).generate(&ast);
-    println!("{:?}", r);
+    CCodeGen::new(source_file.clone(), out)
+        .generate(&ast)
+        .expect("Error writing to file");
 }
